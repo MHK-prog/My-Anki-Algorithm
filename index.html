@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>FSRS Obsidian Cloud</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0f2f5; }
+    .card-box { width: 360px; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+    .front { font-size: 20px; font-weight: bold; margin-bottom: 14px; color: #1e293b; }
+    .back { font-size: 16px; color: #0f172a; min-height: 48px; margin-bottom: 20px; direction: ltr; font-family: monospace; background: #f1f5f9; padding: 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+    .meta { font-size: 12px; color: #64748b; background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 16px; text-align: right; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 12px; font-size: 14px; font-weight: bold; }
+    .btn-show { background: #0284c7; color: white; width: 100%; padding: 10px; }
+    .btn-group { display: flex; gap: 8px; }
+    .btn-again { background: #ef4444; color: white; flex: 1; }
+    .btn-hard  { background: #f97316; color: white; flex: 1; }
+    .btn-good  { background: #10b981; color: white; flex: 1; }
+    .btn-easy  { background: #3b82f6; color: white; flex: 1; }
+    .hidden { display: none !important; }
+    .loading { color: #64748b; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="card-box">
+    <div id="card-front" class="front loading">در حال دریافت کارت‌ها از کلود...</div>
+    <div id="card-back" class="back hidden">-</div>
+
+    <div id="card-meta" class="meta">
+      Stability: <span id="m-s">-</span> | Diff: <span id="m-d">-</span><br>
+      مرور بعدی: <span id="m-due">-</span>
+    </div>
+
+    <button id="show-btn" class="btn-show" onclick="revealAnswer()">نمایش پاسخ</button>
+
+    <div id="rating-btns" class="btn-group hidden">
+      <button class="btn-again" onclick="rate(Rating.Again)">Again</button>
+      <button class="btn-hard" onclick="rate(Rating.Hard)">Hard</button>
+      <button class="btn-good" onclick="rate(Rating.Good)">Good</button>
+      <button class="btn-easy" onclick="rate(Rating.Easy)">Easy</button>
+    </div>
+  </div>
+
+  <script src="./fsrs.js"></script>
+  <script>
+    // 🔴 اطلاعات JSONBin خودت رو اینجا بذار:
+    const BIN_ID = 'YOUR_BIN_ID_HERE';
+    const API_KEY = 'YOUR_MASTER_KEY_HERE';
+
+    const { fsrs, createEmptyCard, Rating } = window.FSRS;
+    window.Rating = Rating;
+    const f = fsrs();
+
+    let cards = [];
+    let currentIndex = 0;
+
+    // ۱. خواندن از دیتابیس ابری
+    async function loadCards() {
+      try {
+        const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+          headers: { 'X-Master-Key': API_KEY }
+        });
+        const data = await res.json();
+        cards = data.record;
+
+        cards.forEach(c => {
+          if (!c.fsrsCard) c.fsrsCard = createEmptyCard();
+          else {
+            c.fsrsCard.due = new Date(c.fsrsCard.due);
+            if (c.fsrsCard.last_review) c.fsrsCard.last_review = new Date(c.fsrsCard.last_review);
+          }
+        });
+
+        document.getElementById('card-front').classList.remove('loading');
+        renderCard();
+      } catch (err) {
+        document.getElementById('card-front').textContent = 'خطا در بارگذاری اطلاعات!';
+      }
+    }
+
+    // ۲. ذخیره خودکار در دیتابیس ابری
+    async function saveCards() {
+      await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': API_KEY
+        },
+        body: JSON.stringify(cards)
+      });
+    }
+
+    function renderCard() {
+      if (!cards.length) return;
+      const item = cards[currentIndex];
+      const card = item.fsrsCard;
+
+      document.getElementById('card-front').textContent = item.front;
+      document.getElementById('card-back').textContent = item.back;
+      document.getElementById('card-back').classList.add('hidden');
+      document.getElementById('rating-btns').classList.add('hidden');
+      document.getElementById('show-btn').classList.remove('hidden');
+
+      document.getElementById('m-s').textContent = (card.stability || 0).toFixed(2);
+      document.getElementById('m-d').textContent = (card.difficulty || 0).toFixed(2);
+      document.getElementById('m-due').textContent = card.due ? new Date(card.due).toLocaleDateString('fa-IR') : 'تازه';
+    }
+
+    function revealAnswer() {
+      document.getElementById('card-back').classList.remove('hidden');
+      document.getElementById('show-btn').classList.add('hidden');
+      document.getElementById('rating-btns').classList.remove('hidden');
+    }
+
+    async function rate(rating) {
+      const item = cards[currentIndex];
+      const now = new Date();
+
+      const schedulingCards = f.repeat(item.fsrsCard, now);
+      item.fsrsCard = schedulingCards[rating].card;
+
+      // کارت بعدی رو سریع نشون بده، بک‌گراند سیو کن
+      currentIndex = (currentIndex + 1) % cards.length;
+      renderCard();
+
+      // ذخیره ابری
+      await saveCards();
+    }
+
+    loadCards();
+  </script>
+</body>
+</html>
